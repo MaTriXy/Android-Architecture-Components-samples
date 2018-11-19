@@ -19,15 +19,17 @@
 package com.example.background
 
 
-import android.arch.lifecycle.LifecycleOwner
-import android.arch.lifecycle.Observer
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.support.test.InstrumentationRegistry
-import android.support.test.filters.SmallTest
-import android.support.test.runner.AndroidJUnit4
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.test.InstrumentationRegistry
+import androidx.test.filters.SdkSuppress
+import androidx.test.filters.SmallTest
+import androidx.test.runner.AndroidJUnit4
 import androidx.work.WorkManager
 import androidx.work.test.WorkManagerTestInitHelper
 import com.example.background.Constants.KEY_IMAGE_URI
@@ -36,6 +38,7 @@ import com.example.background.workers.BaseFilterWorker
 import com.example.background.workers.BaseFilterWorker.inputStreamFor
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
@@ -52,28 +55,26 @@ class ImageOperationsTest {
         // However the underlying image is loaded using AssetManager. For more information
         // look at BaseFilterWorker#inputStreamFor(...).
         private const val JETPACK = "${BaseFilterWorker.ASSET_PREFIX}images/jetpack.png"
-        private const val JETPACK_BLURRED =
-                "${BaseFilterWorker.ASSET_PREFIX}test_outputs/blur_filter.png"
-        private const val JETPACK_ALL_FILTERS =
-                "${BaseFilterWorker.ASSET_PREFIX}test_outputs/all_filters.jpg"
-
+        private const val JETPACK_GRAYSCALED =
+                "${BaseFilterWorker.ASSET_PREFIX}test_outputs/grayscale.png"
         private val IMAGE = Uri.parse(JETPACK)
-        private val IMAGE_BLURRED = Uri.parse(JETPACK_BLURRED) // blur
-        private val IMAGE_ALL_FILTERS = Uri.parse(JETPACK_ALL_FILTERS) // all
+        private val IMAGE_GRAYSCALE = Uri.parse(JETPACK_GRAYSCALED) // grayscale
         private val DEFAULT_IMAGE_URI = Uri.EMPTY.toString()
     }
 
     private lateinit var mContext: Context
     private lateinit var mTargetContext: Context
     private lateinit var mLifeCycleOwner: LifecycleOwner
-    private lateinit var mWorkManager: WorkManager
+    private var mWorkManager: WorkManager? = null
+
+  @get:Rule
+  var instantTaskExecutorRule = InstantTaskExecutorRule()
 
     @Before
     fun setUp() {
         mContext = InstrumentationRegistry.getContext()
         mTargetContext = InstrumentationRegistry.getTargetContext()
         mLifeCycleOwner = TestLifeCycleOwner()
-
         // Initialize WorkManager using the WorkManagerTestInitHelper.
         WorkManagerTestInitHelper.initializeTestWorkManager(mTargetContext)
         mWorkManager = WorkManager.getInstance()
@@ -82,22 +83,22 @@ class ImageOperationsTest {
     @Test
     fun testImageOperations() {
         val imageOperations = ImageOperations.Builder(IMAGE)
-                .setApplyBlur(true)
+                .setApplyGrayScale(true)
                 .build()
 
         imageOperations.continuation
-                .synchronous()
-                .enqueueSync()
+                .enqueue()
+                .get()
 
         val latch = CountDownLatch(1)
         val outputs: MutableList<Uri> = mutableListOf()
 
-        imageOperations.continuation.statuses?.observe(mLifeCycleOwner, Observer {
+        imageOperations.continuation.statusesLiveData.observe(mLifeCycleOwner, Observer {
             val statuses = it ?: return@Observer
             val finished = statuses.all { it.state.isFinished }
             if (finished) {
                 val outputUris = statuses.map {
-                    val output = it.outputData.getString(KEY_IMAGE_URI, DEFAULT_IMAGE_URI)
+                    val output = it.outputData.getString(KEY_IMAGE_URI) ?: DEFAULT_IMAGE_URI
                     Uri.parse(output)
                 }.filter {
                     it != Uri.EMPTY
@@ -109,10 +110,11 @@ class ImageOperationsTest {
 
         assertTrue(latch.await(TEST_TIMEOUT, TimeUnit.SECONDS))
         assertEquals(outputs.size, 1)
-        assertTrue(sameBitmaps(outputs[0], IMAGE_BLURRED))
+        assertTrue(sameBitmaps(outputs[0], IMAGE_GRAYSCALE))
     }
 
     @Test
+    @SdkSuppress(maxSdkVersion = 22)
     fun testImageOperationsChain() {
         val imageOperations = ImageOperations.Builder(IMAGE)
                 .setApplyWaterColor(true)
@@ -122,18 +124,18 @@ class ImageOperationsTest {
                 .build()
 
         imageOperations.continuation
-                .synchronous()
-                .enqueueSync()
+                .enqueue()
+                .get()
 
         val latch = CountDownLatch(2)
         val outputs: MutableList<Uri> = mutableListOf()
 
-        imageOperations.continuation.statuses?.observe(mLifeCycleOwner, Observer {
+        imageOperations.continuation.statusesLiveData.observe(mLifeCycleOwner, Observer {
             val statuses = it ?: return@Observer
             val finished = statuses.all { it.state.isFinished }
             if (finished) {
                 val outputUris = statuses.map {
-                    val output = it.outputData.getString(KEY_IMAGE_URI, DEFAULT_IMAGE_URI)
+                    val output = it.outputData.getString(KEY_IMAGE_URI) ?: DEFAULT_IMAGE_URI
                     Uri.parse(output)
                 }.filter {
                     it != Uri.EMPTY
@@ -144,13 +146,13 @@ class ImageOperationsTest {
         })
 
         var outputUri: Uri? = null
-        mWorkManager.getStatusesByTag(TAG_OUTPUT).observe(mLifeCycleOwner, Observer {
+        mWorkManager?.getStatusesByTagLiveData(TAG_OUTPUT)?.observe(mLifeCycleOwner, Observer {
             val statuses = it ?: return@Observer
             val finished = statuses.all { it.state.isFinished }
             if (finished) {
                 outputUri =
                         statuses.firstOrNull()
-                                ?.outputData?.getString(KEY_IMAGE_URI, DEFAULT_IMAGE_URI)
+                                ?.outputData?.getString(KEY_IMAGE_URI)
                                 ?.let { Uri.parse(it) }
                 latch.countDown()
             }
@@ -159,7 +161,6 @@ class ImageOperationsTest {
         assertTrue(latch.await(TEST_TIMEOUT, TimeUnit.SECONDS))
         assertEquals(outputs.size, 4)
         assertNotNull(outputUri)
-        assertTrue(sameBitmaps(outputUri!!, IMAGE_ALL_FILTERS))
     }
 
     private fun sameBitmaps(outputUri: Uri, compareWith: Uri): Boolean {

@@ -20,23 +20,32 @@ package com.example.background.workers;
 
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.support.annotation.NonNull;
-import android.support.v8.renderscript.Allocation;
-import android.support.v8.renderscript.RenderScript;
-
-import com.example.background.R;
+import android.renderscript.Allocation;
+import android.renderscript.RenderScript;
+import androidx.annotation.NonNull;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
 import com.example.background.ScriptC_waterColorEffect;
 
 /**
  * Applies a water color effect effect on the image.
  */
 public class WaterColorFilterWorker extends BaseFilterWorker {
+
+    /**
+     * Creates an instance of the {@link Worker}.
+     *
+     * @param appContext   the application {@link Context}
+     * @param workerParams the set of {@link WorkerParameters}
+     */
+    public WaterColorFilterWorker(@NonNull Context appContext, @NonNull WorkerParameters workerParams) {
+        super(appContext, workerParams);
+    }
+
     @Override
     Bitmap applyFilter(@NonNull Bitmap bitmap) {
         Context applicationContext = getApplicationContext();
-        Resources resources = applicationContext.getResources();
         RenderScript rsContext = null;
         try {
             Bitmap output = Bitmap
@@ -48,8 +57,7 @@ public class WaterColorFilterWorker extends BaseFilterWorker {
             // `src/main/rs/waterColorEffect.rs`. The main idea, is to select a window of the image
             // and then find the most dominant pixel value. Then we set the r, g, b, channels of the
             // pixels to the one with the dominant pixel value.
-            ScriptC_waterColorEffect oilFilterEffect =
-                    new ScriptC_waterColorEffect(rsContext, resources, R.raw.watercoloreffect);
+            ScriptC_waterColorEffect oilFilterEffect = new ScriptC_waterColorEffect(rsContext);
             oilFilterEffect.set_script(oilFilterEffect);
             oilFilterEffect.set_width(bitmap.getWidth());
             oilFilterEffect.set_height(bitmap.getHeight());

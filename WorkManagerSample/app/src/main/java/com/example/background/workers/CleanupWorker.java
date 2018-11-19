@@ -18,10 +18,12 @@
 
 package com.example.background.workers;
 
-import android.support.annotation.NonNull;
+import android.content.Context;
+import androidx.annotation.NonNull;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.work.WorkerParameters;
 import com.example.background.Constants;
 
 import java.io.File;
@@ -34,9 +36,19 @@ import androidx.work.Worker;
 public class CleanupWorker extends Worker {
     private static final String TAG = "CleanupWorker";
 
+    /**
+     * Creates an instance of the {@link Worker}.
+     *
+     * @param appContext   the application {@link Context}
+     * @param workerParams the set of {@link WorkerParameters}
+     */
+    public CleanupWorker(@NonNull Context appContext, @NonNull WorkerParameters workerParams) {
+        super(appContext, workerParams);
+    }
+
     @Override
     @NonNull
-    public WorkerResult doWork() {
+    public Result doWork() {
         try {
             File outputDirectory =
                     new File(getApplicationContext().getFilesDir(), Constants.OUTPUT_PATH);
@@ -52,10 +64,10 @@ public class CleanupWorker extends Worker {
                     }
                 }
             }
-            return WorkerResult.SUCCESS;
+            return Result.SUCCESS;
         } catch (Exception exception) {
             Log.e(TAG, "Error cleaning up", exception);
-            return WorkerResult.FAILURE;
+            return Result.FAILURE;
         }
     }
 }

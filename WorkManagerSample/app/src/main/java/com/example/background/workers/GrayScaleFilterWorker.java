@@ -19,23 +19,32 @@
 package com.example.background.workers;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.support.annotation.NonNull;
-import android.support.v8.renderscript.Allocation;
-import android.support.v8.renderscript.RenderScript;
-
-import com.example.background.R;
+import android.renderscript.Allocation;
+import android.renderscript.RenderScript;
+import androidx.annotation.NonNull;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
 import com.example.background.ScriptC_grayscale;
 
 /**
  * Applies a gray scale filter.
  */
 public class GrayScaleFilterWorker extends BaseFilterWorker {
+
+    /**
+     * Creates an instance of the {@link Worker}.
+     *
+     * @param appContext   the application {@link Context}
+     * @param workerParams the set of {@link WorkerParameters}
+     */
+    public GrayScaleFilterWorker(@NonNull Context appContext, @NonNull WorkerParameters workerParams) {
+        super(appContext, workerParams);
+    }
+
     @Override
     Bitmap applyFilter(@NonNull Bitmap bitmap) {
         Context applicationContext = getApplicationContext();
-        Resources resources = applicationContext.getResources();
         RenderScript rsContext = null;
         try {
             Bitmap output = Bitmap
@@ -47,8 +56,7 @@ public class GrayScaleFilterWorker extends BaseFilterWorker {
             // `src/main/rs/grayscale.rs`. We compute a new pixel value for every pixel which is
             // out = (r + g + b) / 3 where r, g, b are the red, green and blue channels in the
             // input image.
-            ScriptC_grayscale grayscale =
-                    new ScriptC_grayscale(rsContext, resources, R.raw.grayscale);
+            ScriptC_grayscale grayscale = new ScriptC_grayscale(rsContext);
             grayscale.set_script(grayscale);
             grayscale.set_width(bitmap.getWidth());
             grayscale.set_height(bitmap.getHeight());
